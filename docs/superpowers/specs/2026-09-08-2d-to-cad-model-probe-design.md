@@ -40,26 +40,26 @@ Source: `output/part.STL` (binary, mm units, a pillow-block: rectangular base +
 central bored boss + 2 counterbored side holes + fillets). `output/id209015569.SLDPRT`
 is kept for reference but not parsed.
 
-**Preferred additional exports from SolidWorks (removes the HLR risk, see §2.1.1):**
-- `output/part.STEP` — clean B-rep, needed for reliable HLR projection and for any
-  B-rep-consuming model.
-- `output/drawing_{front,top,right}.dxf` (or a single `output/drawing.pdf`) — the three
-  standard views exported natively from a SolidWorks drawing. SolidWorks produces
-  textbook engineering drawings; using them directly beats anything we can render.
-These are optional — the pipeline still works from STL alone via fallbacks — but if the
-user provides them, `prepare_problem1.py` uses them and skips the fragile step.
+**Optional SolidWorks exports (used only for the user-part OOD drawing probe, §4):**
+- `output/part.STEP` — clean B-rep; lets PlankAssembly's own render script make a
+  proper drawing of the reference part.
+- `output/drawing.pdf` or `output/drawing_{front,top,right}.dxf` — the three standard
+  views from a SolidWorks drawing; best-case OOD input for the drawing models.
+Neither blocks anything (see §2.1.1).
 
-#### 2.1.1 Why HLR projection is the risky step
-PlankAssembly and Drawing2CAD want a *real engineering drawing*: clean 2D line art of
-each orthographic view, solid lines for visible edges, dashed for hidden, produced by
-projecting the solid and classifying occluded geometry (hidden-line removal). Doing this
-well needs the **B-rep** (faces/edges), not our 1916-triangle mesh — running HLR on a
-mesh yields thousands of facet edges, not part outlines. The real tool is OpenCASCADE
-`HLRBRep_Algo` (via `pythonocc-core`): it works but the API is clunky, edge→SVG export
-is hand-rolled, curves tessellate to polylines, and matching each model's expected
-drawing style takes iteration. Mitigation order: **SolidWorks-native DXF/PDF →
-STEP + pythonocc HLR → FreeCAD TechDraw headless → mesh silhouette+crease (approximate,
-labelled as such)**.
+#### 2.1.1 The HLR question — resolved by dataset choice
+PlankAssembly and Drawing2CAD need *real engineering drawings* (clean per-view line art,
+visible vs hidden edges), which needs a B-rep, not our triangle mesh. **We do not write
+HLR code.** Instead:
+- Those two models are evaluated **primarily on their own drawing-native datasets**
+  (§2.3) — PlankAssembly's HF dataset rendered by its bundled `dataset/render_*.py`
+  pythonocc scripts, Drawing2CAD's `svg_raw`, SPARE3D, TriView2CAD.
+- The **reference part is a secondary OOD probe** for them: run PlankAssembly's own
+  `render_visible_svg.py` on `part.STEP` if provided, else use the SolidWorks DXF/PDF,
+  else skip and mark `drawing: OOD-unavailable`.
+- For all *non-drawing* models, the STL renders (§2.1 table) are sufficient and carry no
+  HLR risk.
+The `views/*.svg` row below is therefore best-effort and only for the reference part.
 
 `data/prepare_problem1.py` produces, from the STL:
 
@@ -73,8 +73,8 @@ labelled as such)**.
 | `render_hlr_lines.png` | visible edges only, black on white | cadrille, VLM, PlankAssembly-raster |
 | `render_draftsheet.png` | HLR + centrelines + dashed hidden, paper bg | cadrille, VLM |
 | `tile_4diag.png` | cadrille's native 4-diagonal shaded tile (via `render_mesh.py`) | cadrille (control) |
-| `views/{front,top,right}.svg` + `.png` | **true HLR orthographic projection** via `pythonocc-core` (`HLRBRep_Algo`) | PlankAssembly, Drawing2CAD |
-| `views/three_view.png` | the 3 ortho views composited on one sheet | cadrille, VLM |
+| `views/{front,top,right}.svg` + `.png` | best-effort, reference part only: PlankAssembly's `render_visible_svg.py` on `part.STEP`, or the SolidWorks DXF | PlankAssembly, Drawing2CAD (OOD probe) |
+| `views/three_view.png` | the 3 ortho views composited on one sheet (from the render above, or from `render_hlr_lines`) | cadrille, VLM |
 
 The 6 render styles mirror `extracts/image*.png` (what the user pulled from SolidWorks)
 so results are comparable to the user's manual exploration. If `views/*` can't be built
@@ -90,16 +90,22 @@ highlighter mark). `data/prepare_sketch.py` produces:
 - `sketch_notext.png` — best-effort dimension-text removal (morphological / connected-component filter) — for models that only want geometry
 
 ### 2.3 Benchmark samples (`data/fetch_benchmarks.py`)
-| Dataset | Source | Take | Use |
+The drawing-input models are evaluated **primarily on drawing-native datasets** (their
+own or benchmarks that ship line drawings) — this is the in-distribution, fair test and
+carries no HLR risk. The reference part is the OOD probe on top.
+
+| Dataset | Source | Take | Primary use |
 |---|---|---|---|
+| **PlankAssembly data** | `manycore-research/PlankAssembly` (HF) + bundled `dataset/render_*.py` | its test split, ~30 shapes | PlankAssembly in-distribution eval |
+| **Drawing2CAD data** | Google Drive (`svg_raw` + `svg_vec`) | its test split, ~30 shapes | Drawing2CAD in-distribution eval |
 | DeepCAD test meshes | `maksimko123/deepcad_test_mesh` (HF) | 25 (+ 50 for calibration) | PC models, calibration |
 | Fusion360 test meshes | `maksimko123/fusion360_test_mesh` (HF) | 15 | PC models |
-| SPARE3D | `ai4ce/SPARE3D` (Google Drive) | 15 three-view line-drawing sets | PlankAssembly, Drawing2CAD, cadrille-img, VLM |
+| SPARE3D | `ai4ce/SPARE3D` (Google Drive) | 15 three-view line-drawing sets | cross-model drawing input (Plank/Drawing2CAD/cadrille-img/VLM) + meshes as GT |
 | TriView2CAD | `zhuofanChen/TriView2CAD` (ModelScope) | 15 real ortho+dimension sheets | cadrille-img, VLM, CReFT-CAD |
 | cad-recode release STL | GitHub release | 1 | smoke test |
 
 Each benchmark shape that has a mesh also goes through the Problem-1 `prepare` pipeline
-so every model sees a consistent input format.
+so every non-drawing model sees a consistent input format.
 
 ---
 
@@ -136,8 +142,8 @@ and write, per input: `<stem>+s<k>.py` (or `.stl` for Point2CAD) + a `meta.json`
 |---|---|---|---|
 | `cadrille_img` | col14m/cadrille, `maksimko123/cadrille` | render PNGs, tiles, 3-view sheet | **exists** (`infer_image.py`), refactor into `models/`. `--raw` for prepared tiles. |
 | `cadrille_pc` | same | `.ply` point cloud | new wrapper; reuse repo `collate`, `--mode pc` path. |
-| `plankassembly` | manycore-research/PlankAssembly | `atlas` (raster) branch: `render_hlr_lines.png` + SVG branch: `views/*.svg` | furniture-domain model — expected to do poorly on mech parts; that is a finding. Check checkpoint release; if none, drop to "documented, not run". torch 1.10/cu113 env. |
-| `drawing2cad` | lllssc/Drawing2CAD | `views/*.svg` (Front/Top/Right/iso) preprocessed to their format | ACM-MM'25. Verify weights on their Google Drive; if absent → documented only. |
+| `plankassembly` | manycore-research/PlankAssembly | **primary:** its own HF test split (SVGs via bundled `dataset/render_*.py`). **OOD:** reference part via `render_visible_svg.py` on `part.STEP` | furniture-domain — expected to do poorly on mech parts; that is a finding. Check checkpoint release; if none → "documented, not run". torch 1.10/cu113 env. |
+| `drawing2cad` | lllssc/Drawing2CAD | **primary:** its own `svg_raw` test split. **OOD:** reference-part SVG if available | ACM-MM'25. Verify weights on their Google Drive; if absent → documented only. |
 | `creft_cad` | KeNiu042/CReFT-CAD + ModelScope ckpt `zhuofanChen/CReFT-CAD` | ortho sheet (+ dims) | training code gated on acceptance, but **checkpoint + TriView2CAD are on ModelScope**. Attempt inference with the ckpt (it's a Qwen2-VL SFT). If ckpt won't load → documented only. |
 | `vlm_baseline` | Qwen2.5-VL-7B-Instruct (HF), local on 3090 | any render + 3-view sheet | prompt → CadQuery code; fixed prompt template in `models/vlm_baseline.py`. Also an optional API path (Claude/GPT-4o) behind an env var, off by default. |
 
@@ -172,7 +178,7 @@ cad-trials/                      (new top-level dir in the project)
     _base.py                    shared CLI arg parsing + output contract
   common/
     execute_cad.py              (exists) CadQuery exec + validity   [moved in]
-    render.py                   (exists render_mesh.py) + HLR + multiview  [moved in]
+    render.py                   (exists render_mesh.py) + the 6 style renders + multiview  [moved in]
     metrics.py                  IoU (voxel), chamfer, program parse
     grid.py                     contact-sheet / matrix figure builder
     io.py                       runs.jsonl append, meta.json schema
@@ -226,7 +232,7 @@ Published as an Artifact (like the earlier lit-map). Sections:
    add `metrics.py`, `io.py`, `grid.py`, `probe-common` env. Verify on existing
    `work_dirs/dc0` outputs.
 2. **M1 – prepare Problem 1:** `prepare_problem1.py` on `output/part.STL` → all
-   artifacts; eyeball the HLR SVGs. This is the riskiest step (HLR) — do it early.
+   artifacts; eyeball the renders. Reference-part SVG is best-effort (needs `part.STEP`).
 3. **M2 – already-running models:** wrap `cadrille_img`, `cadrille_pc`, `cadrecode`;
    run on the reference part; first rows in `runs.jsonl`; first draft `report.html`.
 4. **M3 – easy adds:** `point2cad` (docker), `vlm_baseline` (Qwen2.5-VL-7B).
@@ -247,7 +253,7 @@ happen against whatever depth is reached.
 
 | Risk | Mitigation |
 |---|---|
-| True HLR orthographic projection is finicky | pythonocc → FreeCAD → approximate, in that order; document which was used |
+| Clean engineering drawings of the *reference part* | resolved by design: drawing models eval on drawing-native datasets; reference part is best-effort OOD only (§2.1.1) |
 | PlankAssembly / Drawing2CAD / CReFT-CAD weights not actually downloadable | each is time-boxed; degrade to "documented, not run" |
 | Env conflicts eat time | strict per-model isolation; Point2CAD stays containerized |
 | Voxel IoU misleading for thin features | report Chamfer alongside; 64³ minimum, note limitation |
