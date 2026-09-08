@@ -48,10 +48,13 @@ def execute_program(code: str, out_stl: str | Path, timeout: float = 15.0) -> Ex
     p.join(timeout)
     if p.is_alive():
         p.terminate()
-        p.join()
+        p.join(2)
+        if p.is_alive():
+            p.kill()
+            p.join()
         return ExecResult(ok=False, error=f"timeout after {timeout}s")
     try:
-        d = q.get_nowait()
+        d = q.get(timeout=1.0)
     except Exception:
         return ExecResult(ok=False, error="worker died without result")
     if not d.get("ok"):
