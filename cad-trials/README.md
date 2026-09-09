@@ -53,10 +53,13 @@ python -m pytest cad-trials/ -v
 ```
 
 Tests cover:
-- **Render** (`test_render.py`): image generation (5 styles, diagonal tile, orthographic views)
-- **Geometry** (`test_geometry.py`): mesh I/O, validation
-- **Problem definition** (`test_problem.py`): seeds, ground-truth generation
+- **Render** (`test_render.py`): image rendering (5 styles, diagonal tile, orthographic views)
+- **Meshes** (`test_meshes.py`): normalization, scaling, point cloud sampling, loading
+- **Problem 1 prep** (`test_prepare_problem1.py`): pipeline, seed generation, point cloud sizing
+- **Execution** (`test_execute.py`): CadQuery program execution, timeouts, error handling
+- **Metrics** (`test_metrics.py`): IoU, Chamfer distance, operation counting
 - **IO/Logging** (`test_io.py`): `runs.jsonl` recording
+- **Base** (`test_base.py`): parser, input expansion, output writing, ground-truth reference
 
 No slow tests yet; full suite runs in <1 min on most hardware.
 
