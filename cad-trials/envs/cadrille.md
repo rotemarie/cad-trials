@@ -58,6 +58,7 @@ python -m cad_trials.models.cadrille_img \
   --n-samples 5
 ```
 
-Add `--raw` when the input set is `tile_4diag.png` (already letterboxed + bordered
-by `prepare_problem1.py`); the six Task-5 render styles and `three_view.png` want
-the default letterbox path.
+`tile_4diag.png` (already letterboxed + bordered by `prepare_problem1.py`) is
+auto-detected by stem and passed through raw; the six Task-5 render styles and
+`three_view.png` go through the default letterbox path. `--raw` forces every
+input through raw and is not normally needed.

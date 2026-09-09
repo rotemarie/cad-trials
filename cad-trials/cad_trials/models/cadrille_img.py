@@ -124,17 +124,6 @@ def run_cadrille_image(model, processor, image: Image.Image, n_samples: int,
     return codes
 
 
-def input_kind_for(stem: str) -> str:
-    """Kind label derived from a prepared-image stem.
-
-    ``tile_4diag`` / ``three_view`` / ``render_<style>`` are already descriptive
-    stems and pass through; anything else is labelled by its bare stem.
-    """
-    if stem in ("tile_4diag", "three_view") or stem.startswith("render_"):
-        return stem
-    return stem
-
-
 def _score(pred_stl: str, gt_path: str) -> tuple[float | None, float | None]:
     """(voxel_iou, chamfer) for a predicted STL vs GT; None on any load/metric error."""
     try:
@@ -159,8 +148,9 @@ def main(argv=None) -> None:
         "Run pretrained cadrille on rendered images and score the CadQuery.")
     parser.add_argument(
         "--raw", action="store_true",
-        help="feed images unmodified (use for tile_4diag.png); default letterboxes "
-             "to 128px + adds the training-time black border")
+        help="force every input through unmodified; by default only the "
+             "tile_4diag stem is fed raw and everything else is letterboxed to "
+             "128px + given the training-time black border")
     args = parser.parse_args(argv)
 
     weights = args.weights or DEFAULT_WEIGHTS
@@ -172,7 +162,9 @@ def main(argv=None) -> None:
 
     for input_path in inputs:
         stem = input_path.stem
-        kind = input_kind_for(stem)
+        # tile_4diag.png is already composed + bordered by prepare_problem1.py, so
+        # it must skip the letterbox; render_* / three_view need it. --raw forces all.
+        raw = args.raw or stem == "tile_4diag"
         gt = gt_for(stem, args.gt)
         for k in range(args.n_samples):
             if already_done("cadrille_img", str(input_path), k, args.runs_path):
@@ -187,7 +179,7 @@ def main(argv=None) -> None:
             n_ops = None
 
             try:
-                image = prepare_image(input_path, raw=args.raw)
+                image = prepare_image(input_path, raw=raw)
                 code = run_cadrille_image(
                     model, processor, image, n_samples=1,
                     seed_base=args.seed_base + k)[0]
@@ -195,7 +187,7 @@ def main(argv=None) -> None:
                 error = f"{type(e).__name__}: {e}"
 
             if code is not None:
-                meta = {"weights": weights, "raw": bool(args.raw),
+                meta = {"weights": weights, "raw": bool(raw),
                         "seed": args.seed_base + k}
                 out_path = write_output(out_dir, stem, k, code, meta, ext="py")
                 res = execute_program(code, out_dir / f"{stem}+s{k}.stl")
@@ -211,7 +203,7 @@ def main(argv=None) -> None:
                     weights_id=weights,
                     problem=args.problem,
                     input_path=str(input_path),
-                    input_kind=kind,
+                    input_kind=stem,
                     sample=k,
                     output_path=str(out_path) if out_path is not None else None,
                     wall_s=time.perf_counter() - t0,
