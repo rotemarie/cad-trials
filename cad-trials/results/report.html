@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cad-trials &mdash; draft report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: #f6f5f1; color: #1b2431;
+  font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.5; -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+header { border-bottom: 2px solid #1b2431; padding-bottom: 1.25rem; margin-bottom: 2.5rem; }
+h1 { font-size: 1.6rem; font-weight: 600; margin: 0 0 .35rem; letter-spacing: -0.01em; }
+h1 .accent { color: #b23b30; }
+h2 {
+  font-size: 1.05rem; font-weight: 600; margin: 0 0 .6rem;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+section { margin-bottom: 3rem; }
+.meta { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .8rem; color: #5c6672; }
+.note { font-size: .85rem; color: #5c6672; margin: 0 0 1rem; }
+.empty { font-style: italic; color: #8a8f97; }
+.scroll { overflow-x: auto; border: 1px solid #dcd9cf; border-radius: 3px; }
+table {
+  border-collapse: collapse; width: 100%;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .78rem; font-variant-numeric: tabular-nums;
+}
+thead th {
+  background: #1b2431; color: #f6f5f1; font-weight: 500; text-align: left;
+  padding: .5rem .7rem; white-space: nowrap; position: sticky; top: 0;
+}
+tbody td, tbody th { padding: .45rem .7rem; border-top: 1px solid #dcd9cf; vertical-align: top; }
+tbody th.rowhead { text-align: left; font-weight: 600; background: #efeee8; white-space: nowrap; }
+table.cov td.cov-cell { min-width: 8.5rem; }
+.cov-cell .big { display: block; font-size: 1rem; font-weight: 600; }
+.cov-cell .sub { display: block; font-size: .68rem; color: #3f4854; margin-top: .2rem; }
+td.num, td.mark { text-align: right; white-space: nowrap; }
+td.mark { text-align: center; }
+td.mark.ok { color: #2f7d43; }
+td.mark.bad { color: #b23b30; }
+td.err { color: #b23b30; max-width: 22rem; }
+tbody tr:nth-child(even) td { background: rgba(0,0,0,0.015); }
+.thumbs { display: flex; flex-wrap: wrap; gap: 1rem; }
+.thumbs figure { margin: 0; width: 200px; border: 1px solid #dcd9cf; background: #fff; padding: .5rem; }
+.thumbs img { width: 100%; display: block; }
+.thumbs figcaption {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .68rem; color: #5c6672; margin-top: .4rem; word-break: break-all;
+}
+footer { margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid #dcd9cf;
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .72rem; color: #8a8f97; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>cad-trials <span class="accent">&mdash;</span> draft report</h1>
+  <p class="meta">generated 2026-09-10 15:56 UTC &middot; 15 run(s) &middot; 3 model(s)</p>
+</header>
+<section><h2>Coverage matrix</h2><p class='note'>Cell shading tracks valid-geometry rate. Each cell: geom% (large), then run count, valid-code%, mean IoU.</p><div class='scroll'><table class='cov'><thead><tr><th>model \ input_kind</th><th>pc_1024</th><th>pc_256</th><th>pc_4096</th><th>render_hlr_lines</th><th>render_shaded_color</th><th>render_wireframe</th><th>tile_4diag</th></tr></thead><tbody><tr><th class='rowhead'>cadrecode</th><td class='cov-cell' style='background:#4a9d5b'><span class='big'>100%</span> geom<span class='sub'>n=2 &middot; code 100% &middot; IoU 0.86</span></td><td class='cov-cell' style='background:#4a9d5b'><span class='big'>100%</span> geom<span class='sub'>n=1 &middot; code 100% &middot; IoU 0.74</span></td><td class='cov-cell' style='background:#f6f5f1'><span class='big'>0%</span> geom<span class='sub'>n=1 &middot; code 0% &middot; IoU &mdash;</span></td><td class='cov-cell empty'>&mdash;</td><td class='cov-cell empty'>&mdash;</td><td class='cov-cell empty'>&mdash;</td><td class='cov-cell empty'>&mdash;</td></tr><tr><th class='rowhead'>cadrille_img</th><td class='cov-cell empty'>&mdash;</td><td class='cov-cell empty'>&mdash;</td><td class='cov-cell empty'>&mdash;</td><td class='cov-cell' style='background:#a0c9a6'><span class='big'>50%</span> geom<span class='sub'>n=2 &middot; code 100% &middot; IoU 0.44</span></td><td class='cov-cell' style='background:#4a9d5b'><span class='big'>100%</span> geom<span class='sub'>n=2 &middot; code 100% &middot; IoU 0.69</span></td><td class='cov-cell' style='background:#f6f5f1'><span class='big'>0%</span> geom<span class='sub'>n=2 &middot; code 50% &middot; IoU &mdash;</span></td><td class='cov-cell' style='background:#4a9d5b'><span class='big'>100%</span> geom<span class='sub'>n=2 &middot; code 100% &middot; IoU 0.80</span></td></tr><tr><th class='rowhead'>cadrille_pc</th><td class='cov-cell' style='background:#a0c9a6'><span class='big'>50%</span> geom<span class='sub'>n=2 &middot; code 100% &middot; IoU 0.77</span></td><td class='cov-cell' style='background:#4a9d5b'><span class='big'>100%</span> geom<span class='sub'>n=1 &middot; code 100% &middot; IoU 0.68</span></td><td class='cov-cell empty'>&mdash;</td><td class='cov-cell empty'>&mdash;</td><td class='cov-cell empty'>&mdash;</td><td class='cov-cell empty'>&mdash;</td><td class='cov-cell empty'>&mdash;</td></tr></tbody></table></div></section>
+<section><h2>Per-run table</h2><p class='note'>15 run(s).</p><div class='scroll'><table class='runs'><thead><tr><th>model</th><th>weights_id</th><th>problem</th><th>input_path</th><th>input_kind</th><th>sample</th><th>output_path</th><th>wall_s</th><th>error</th><th>valid_code</th><th>valid_geometry</th><th>iou</th><th>chamfer</th><th>n_ops</th><th>gt_path</th></tr></thead><tbody><tr><td>cadrille_img</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/render_shaded_color.png</td><td>render_shaded_color</td><td>0</td><td>results/cadrille_img/part+render_shaded_color+s0.py</td><td class='num'>1.500</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark ok'>&#10003;</td><td class='num'>0.710</td><td class='num'>0.021</td><td>6</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrille_img</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/render_shaded_color.png</td><td>render_shaded_color</td><td>1</td><td>results/cadrille_img/part+render_shaded_color+s1.py</td><td class='num'>2.200</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark ok'>&#10003;</td><td class='num'>0.660</td><td class='num'>0.028</td><td>7</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrille_img</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/render_hlr_lines.png</td><td>render_hlr_lines</td><td>0</td><td>results/cadrille_img/part+render_hlr_lines+s0.py</td><td class='num'>2.900</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark bad'>&times;</td><td class='num'>&mdash;</td><td class='num'>&mdash;</td><td>&mdash;</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrille_img</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/render_hlr_lines.png</td><td>render_hlr_lines</td><td>1</td><td>results/cadrille_img/part+render_hlr_lines+s1.py</td><td class='num'>3.600</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark ok'>&#10003;</td><td class='num'>0.440</td><td class='num'>0.061</td><td>9</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrille_img</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/render_wireframe.png</td><td>render_wireframe</td><td>0</td><td>&mdash;</td><td class='num'>4.300</td><td class='err'>SyntaxError: unexpected EOF</td><td class='mark bad'>&times;</td><td class='mark bad'>&times;</td><td class='num'>&mdash;</td><td class='num'>&mdash;</td><td>&mdash;</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrille_img</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/render_wireframe.png</td><td>render_wireframe</td><td>1</td><td>results/cadrille_img/part+render_wireframe+s1.py</td><td class='num'>5.000</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark bad'>&times;</td><td class='num'>&mdash;</td><td class='num'>&mdash;</td><td>&mdash;</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrille_img</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/tile_4diag.png</td><td>tile_4diag</td><td>0</td><td>results/cadrille_img/part+tile_4diag+s0.py</td><td class='num'>1.700</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark ok'>&#10003;</td><td class='num'>0.820</td><td class='num'>0.012</td><td>7</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrille_img</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/tile_4diag.png</td><td>tile_4diag</td><td>1</td><td>results/cadrille_img/part+tile_4diag+s1.py</td><td class='num'>2.400</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark ok'>&#10003;</td><td class='num'>0.790</td><td class='num'>0.014</td><td>8</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrille_pc</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/pc_256.ply</td><td>pc_256</td><td>0</td><td>results/cadrille_pc/part+pc_256+s0.py</td><td class='num'>3.100</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark ok'>&#10003;</td><td class='num'>0.680</td><td class='num'>0.024</td><td>9</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrille_pc</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/pc_1024.ply</td><td>pc_1024</td><td>0</td><td>results/cadrille_pc/part+pc_1024+s0.py</td><td class='num'>3.800</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark ok'>&#10003;</td><td class='num'>0.770</td><td class='num'>0.016</td><td>10</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrille_pc</td><td>w-cadrille-v1</td><td>p1</td><td>results/prepared/part/pc_1024.ply</td><td>pc_1024</td><td>1</td><td>results/cadrille_pc/part+pc_1024+s1.py</td><td class='num'>4.500</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark bad'>&times;</td><td class='num'>&mdash;</td><td class='num'>&mdash;</td><td>&mdash;</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrecode</td><td>w-cadrecode-v1.5</td><td>p1</td><td>results/prepared/part/pc_256.ply</td><td>pc_256</td><td>0</td><td>results/cadrecode/part+pc_256+s0.py</td><td class='num'>5.200</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark ok'>&#10003;</td><td class='num'>0.740</td><td class='num'>0.019</td><td>7</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrecode</td><td>w-cadrecode-v1.5</td><td>p1</td><td>results/prepared/part/pc_1024.ply</td><td>pc_1024</td><td>0</td><td>results/cadrecode/part+pc_1024+s0.py</td><td class='num'>1.900</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark ok'>&#10003;</td><td class='num'>0.880</td><td class='num'>0.009</td><td>8</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrecode</td><td>w-cadrecode-v1.5</td><td>p1</td><td>results/prepared/part/pc_1024.ply</td><td>pc_1024</td><td>1</td><td>results/cadrecode/part+pc_1024+s1.py</td><td class='num'>2.600</td><td class='err'></td><td class='mark ok'>&#10003;</td><td class='mark ok'>&#10003;</td><td class='num'>0.850</td><td class='num'>0.011</td><td>9</td><td>results/prepared/part/normalized.stl</td></tr><tr><td>cadrecode</td><td>w-cadrecode-v1.5</td><td>p1</td><td>results/prepared/part/pc_4096.ply</td><td>pc_4096</td><td>0</td><td>&mdash;</td><td class='num'>3.300</td><td class='err'>RuntimeError: CUDA OOM</td><td class='mark bad'>&times;</td><td class='mark bad'>&times;</td><td class='num'>&mdash;</td><td class='num'>&mdash;</td><td>&mdash;</td><td>results/prepared/part/normalized.stl</td></tr></tbody></table></div></section>
+
+<footer>Draft mentor deliverable. Regenerate with
+<code>cad_trials.common.report.build_report</code>.</footer>
+</div>
+</body>
+</html>
