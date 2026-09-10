@@ -10,9 +10,11 @@ input preparation differs.  That common part lives here:
   ``Qwen2-VL`` constants,
 * :func:`load_model` / :func:`load_processor`,
 * :func:`generate_codes` -- the seeded ``collate``/``generate``/decode loop, given
-  a ready per-modality message dict,
-* :func:`score` -- predicted-STL-vs-GT metrics,
-* :func:`make_record` -- the RunRecord construction (identical bar ``model=``).
+  a ready per-modality message dict.
+
+:func:`score` and :func:`make_record` (torch-free, model-agnostic) now live in
+:mod:`cad_trials.common.scoring` and are re-exported here for the existing
+``from cad_trials.models._cadrille_common import make_record`` call sites.
 
 ``torch`` / ``transformers`` / ``cadrille`` are imported at module load: importing
 this module requires a working cadrille environment (see ``envs/cadrille.md``).
@@ -29,10 +31,7 @@ from transformers import AutoProcessor
 sys.path.insert(0, str(Path(__file__).parents[2] / "vendor" / "cadrille"))
 from cadrille import Cadrille, collate  # noqa: E402
 
-from cad_trials.common.execute import valid_geometry  # noqa: E402
-from cad_trials.common.io import RunRecord  # noqa: E402
-from cad_trials.common.meshes import load_mesh  # noqa: E402
-from cad_trials.common.metrics import chamfer_distance, count_ops, voxel_iou  # noqa: E402
+from cad_trials.common.scoring import make_record, score  # noqa: E402,F401
 
 DEFAULT_WEIGHTS = "maksimko123/cadrille"
 PROCESSOR_ID = "Qwen/Qwen2-VL-2B-Instruct"
@@ -105,57 +104,3 @@ def generate_codes(model, processor, item: dict, n_samples: int, seed_base: int,
             trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         codes.append(decoded[0])
     return codes
-
-
-def score(pred_stl: str, gt_path: str) -> tuple[float | None, float | None]:
-    """(voxel_iou, chamfer) for a predicted STL vs GT; None on any load/metric error."""
-    try:
-        pred_mesh = load_mesh(pred_stl)
-        gt_mesh = load_mesh(gt_path)
-    except Exception:
-        return None, None
-    iou = chamfer = None
-    try:
-        iou = voxel_iou(pred_mesh, gt_mesh)
-    except Exception:
-        iou = None
-    try:
-        chamfer = chamfer_distance(pred_mesh, gt_mesh)
-    except Exception:
-        chamfer = None
-    return iou, chamfer
-
-
-def make_record(*, model: str, weights: str, problem: str, input_path, kind: str,
-                sample: int, out_path, res, code: str | None, gt: str | None,
-                wall_s: float, error: str | None) -> RunRecord:
-    """Build the RunRecord shared by both wrappers (identical bar ``model=``).
-
-    Merges ``res.error`` into ``error`` (when no earlier error), computes
-    ``n_ops`` from ``code`` and ``iou``/``chamfer`` via :func:`score` when the
-    program executed and a GT mesh is available -- matching the pre-refactor
-    inline logic in each wrapper's ``main``.
-    """
-    if res is not None and res.error and error is None:
-        error = res.error
-    n_ops = count_ops(code) if code is not None else None
-    iou = chamfer = None
-    if res is not None and res.ok and gt:
-        iou, chamfer = score(res.stl_path, gt)
-    return RunRecord(
-        model=model,
-        weights_id=weights,
-        problem=problem,
-        input_path=str(input_path),
-        input_kind=kind,
-        sample=sample,
-        output_path=str(out_path) if out_path is not None else None,
-        wall_s=wall_s,
-        error=error,
-        valid_code=bool(res.ok) if res is not None else False,
-        valid_geometry=valid_geometry(res) if res is not None else False,
-        iou=iou,
-        chamfer=chamfer,
-        n_ops=n_ops,
-        gt_path=gt,
-    )
