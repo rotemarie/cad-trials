@@ -10,6 +10,9 @@
 #SBATCH --cpus-per-task 4
 #SBATCH --mem 24G
 #SBATCH --time 8:00:00
+# Array size must match the manifest line count. Submit with an explicit override:
+#   sbatch --array=1-$(wc -l < cad-trials/results/manifest.tsv) cad-trials/slurm/run_model.sbatch
+# The directive below is a default for the current 9-task manifest.
 #SBATCH --array=1-9
 #SBATCH -o cad-trials/results/slurm-%A_%a.out
 
@@ -20,6 +23,11 @@ MANIFEST="${1:-cad-trials/results/manifest.tsv}"
 
 # Go to repo root
 cd "$(git rev-parse --show-toplevel)"
+
+# Set up Python path and conda
+export PYTHONPATH="$PWD/cad-trials:$PYTHONPATH"
+module load miniconda 2>/dev/null || true
+eval "$(conda shell.bash hook)"
 
 # Read the task line from manifest
 # Line numbers are 1-indexed, but arrays are typically 1-indexed in slurm

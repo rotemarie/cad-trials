@@ -29,6 +29,7 @@ cad-trials/results/**/*.stl
 cad-trials/results/**/*.step
 cad-trials/results/**/*.ply
 cad-trials/results/**/*.png
+cad-trials/results/*.tsv
 cad-trials/results/prepared/
 cad-trials/work_dirs/
 work_dirs/

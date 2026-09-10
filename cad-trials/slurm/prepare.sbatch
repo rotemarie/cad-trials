@@ -11,11 +11,18 @@
 
 set -e
 
+# Go to repo root
+cd "$(git rev-parse --show-toplevel)"
+
+# Set up Python path and conda
+export PYTHONPATH="$PWD/cad-trials:$PYTHONPATH"
+module load miniconda 2>/dev/null || true
+eval "$(conda shell.bash hook)"
+
 # Activate conda environment
 conda activate probe-common
 
 # Run prepare_problem1
-cd "$(git rev-parse --show-toplevel)"
 python -m cad_trials.data.prepare_problem1 \
     --stl output/fine.STL \
     --out-dir cad-trials/results/prepared/part

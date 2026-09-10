@@ -1,5 +1,7 @@
 """Manifest builder for Slurm array job harness."""
 
+import os
+import subprocess
 from pathlib import Path
 from typing import Sequence
 
@@ -21,12 +23,19 @@ MODEL_KINDS = {
     },
 }
 
-# n_samples for each model
-N_SAMPLES = {
-    "cadrille_img": 5,
-    "cadrille_pc": 5,
-    "cadrecode": 5,
-}
+
+def _get_repo_root() -> Path:
+    """Find repo root using git, or return current directory if git fails."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return Path(result.stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return Path.cwd()
 
 
 def build_manifest(
@@ -42,7 +51,9 @@ def build_manifest(
 
     The TSV has columns: model<TAB>input_path<TAB>input_kind<TAB>n_samples<TAB>env
     Each row represents one task for the array job.
+    Paths are stored as repo-root-relative (e.g., cad-trials/results/prepared/part/file.png).
     """
+    repo_root = _get_repo_root()
     rows = []
 
     for prep_dir_str in prepared_dirs:
@@ -57,7 +68,7 @@ def build_manifest(
             config = MODEL_KINDS[model]
             env = config["env"]
             kinds = config["kinds"]
-            n_samples = N_SAMPLES.get(model, 5)
+            n_samples = 5  # All models use 5 samples
 
             # Find files matching the kinds
             for file_path in sorted(prep_dir.glob("*")):
@@ -68,8 +79,15 @@ def build_manifest(
 
                 # Check if this file's stem matches any accepted kind
                 if stem in kinds:
+                    # Convert to repo-root-relative path
+                    try:
+                        rel_path = os.path.relpath(file_path, repo_root)
+                    except ValueError:
+                        # Fallback if relpath fails (e.g., different drives on Windows)
+                        rel_path = str(file_path)
+
                     rows.append(
-                        f"{model}\t{str(file_path)}\t{stem}\t{n_samples}\t{env}"
+                        f"{model}\t{rel_path}\t{stem}\t{n_samples}\t{env}"
                     )
 
     # Write manifest
@@ -81,21 +99,10 @@ def build_manifest(
 if __name__ == "__main__":
     # Dry-run: build manifest for prepared/part directory
     import sys
-    import os
 
-    # Try both relative paths (from cad-trials and from CAD root)
-    cwd = Path.cwd()
-    if (cwd / "cad_trials").is_dir():
-        # Running from cad-trials directory
-        base = cwd
-    elif (cwd / "cad-trials" / "cad_trials").is_dir():
-        # Running from CAD root
-        base = cwd / "cad-trials"
-    else:
-        base = cwd
-
-    prep_dir = base / "results" / "prepared" / "part"
-    out_file = base / "results" / "manifest.tsv"
+    repo_root = _get_repo_root()
+    prep_dir = repo_root / "cad-trials" / "results" / "prepared" / "part"
+    out_file = repo_root / "cad-trials" / "results" / "manifest.tsv"
     models_list = ["cadrille_img", "cadrille_pc", "cadrecode"]
 
     build_manifest([str(prep_dir)], models_list, str(out_file))
