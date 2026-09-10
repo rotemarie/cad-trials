@@ -12,6 +12,10 @@ def test_valid_program_executes(tmp_path):
     assert (tmp_path / "a.stl").exists()
     assert res.volume ==  __import__("pytest").approx(8.0, rel=0.05)
     assert valid_geometry(res)
+    # process=True + merge_vertices(): a closed box must come back watertight, so
+    # the recorded `watertight` flag (and the volume behind it) is meaningful.
+    assert res.watertight is True
+    assert res.n_vertices == 8
 
 
 def test_result_variable_fallback(tmp_path):

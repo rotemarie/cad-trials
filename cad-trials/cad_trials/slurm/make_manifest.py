@@ -5,13 +5,20 @@ import subprocess
 from pathlib import Path
 from typing import Sequence
 
+# render.STYLES is the single source of truth for the image kinds; importing it
+# keeps the manifest in step with a style rename/addition.  render.py is
+# torch-free (matplotlib only), so this stays importable in probe-common.
+from cad_trials.common.render import STYLES
+
+# every image input_kind prepare_problem1.py emits
+IMAGE_KINDS = [f"render_{s}" for s in STYLES] + ["tile_4diag", "three_view"]
+
 
 # Model → (env, kinds) mapping
 MODEL_KINDS = {
     "cadrille_img": {
         "env": "cadrille",
-        "kinds": ["render_draftsheet", "render_hlr_lines", "render_shaded_color",
-                  "render_shaded_hlr", "render_wireframe", "tile_4diag", "three_view"],
+        "kinds": IMAGE_KINDS,
     },
     "cadrille_pc": {
         "env": "cadrille",
@@ -49,7 +56,14 @@ def build_manifest(
         models: List of model names to include (e.g., ["cadrille_img", "cadrille_pc", "cadrecode"])
         out_tsv: Path to output TSV file
 
-    The TSV has columns: model<TAB>input_path<TAB>input_kind<TAB>n_samples<TAB>env
+    The TSV has columns:
+    part<TAB>model<TAB>input_path<TAB>input_kind<TAB>n_samples<TAB>env
+
+    ``part`` is the prepared dir's basename.  It disambiguates rows once more than
+    one part is prepared: output filenames are prefixed with it and the ground-truth
+    mesh is resolved next to the input, so two parts sharing an input stem
+    (``pc_256.ply``) neither collide on disk nor get scored against each other's GT.
+
     Each row represents one task for the array job.
     Paths are stored as repo-root-relative (e.g., cad-trials/results/prepared/part/file.png).
     """
@@ -60,6 +74,7 @@ def build_manifest(
         prep_dir = Path(prep_dir_str)
         if not prep_dir.is_dir():
             continue
+        part = prep_dir.name
 
         for model in models:
             if model not in MODEL_KINDS:
@@ -87,7 +102,7 @@ def build_manifest(
                         rel_path = str(file_path)
 
                     rows.append(
-                        f"{model}\t{rel_path}\t{stem}\t{n_samples}\t{env}"
+                        f"{part}\t{model}\t{rel_path}\t{stem}\t{n_samples}\t{env}"
                     )
 
     # Write manifest

@@ -25,10 +25,19 @@ from pathlib import Path
 from cad_trials.common.io import RunRecord, load_runs
 
 _FIELDS = [
-    "model", "weights_id", "problem", "input_path", "input_kind", "sample",
-    "output_path", "wall_s", "error", "valid_code", "valid_geometry",
+    "part", "model", "weights_id", "problem", "input_path", "input_kind", "sample",
+    "output_path", "wall_s", "error", "valid_code", "valid_geometry", "watertight",
     "iou", "chamfer", "n_ops", "gt_path",
 ]
+
+# I7: the image input_kinds are not fed at equal resolution -- see _coverage_section.
+_RESOLUTION_CAVEAT = (
+    "Image inputs are not at equal resolution: <code>tile_4diag</code> = 4&times;128 px "
+    "views (raw); <code>render_*</code> styles = 2&times;2 viewport downscaled to 128 px "
+    "(~64 px/view); <code>three_view</code> = 768&times;256 letterboxed to 128&sup2;. "
+    "Cross-style comparisons partly reflect input resolution. A same-resolution "
+    "re-render is a Plan 2 task."
+)
 
 # drafting palette (shared with the lit-map artifact)
 _PAPER = "#f6f5f1"
@@ -46,22 +55,26 @@ def _mean(vals: list[float | None]) -> float | None:
 
 
 def coverage_table(rows: list[RunRecord]) -> list[dict]:
-    """One dict per ``(model, input_kind)`` group.
+    """One dict per ``(part, model, input_kind)`` group.
 
-    Keys: ``model``, ``input_kind``, ``n``, ``valid_code_pct``,
+    Keys: ``part``, ``model``, ``input_kind``, ``n``, ``valid_code_pct``,
     ``valid_geom_pct``, ``mean_iou``, ``mean_chamfer``.  Percentages are over the
     ``n`` rows in the group (``True`` count / n * 100).  ``mean_iou`` /
     ``mean_chamfer`` average only the non-``None`` values, and are ``None`` when
     the group has none.
+
+    ``part`` was added after the first ledgers were written; rows without it group
+    under ``part=None`` (i.e. exactly the old ``(model, input_kind)`` behaviour).
     """
-    groups: dict[tuple[str, str], list[RunRecord]] = {}
+    groups: dict[tuple[str, str, str], list[RunRecord]] = {}
     for r in rows:
-        groups.setdefault((r.model, r.input_kind), []).append(r)
+        groups.setdefault((getattr(r, "part", None) or "", r.model, r.input_kind), []).append(r)
 
     out: list[dict] = []
-    for (model, kind), grp in sorted(groups.items()):
+    for (part, model, kind), grp in sorted(groups.items()):
         n = len(grp)
         out.append({
+            "part": part or None,
             "model": model,
             "input_kind": kind,
             "n": n,
@@ -104,16 +117,19 @@ def _coverage_section(rows: list[RunRecord]) -> str:
     if not tbl:
         return "<section><h2>Coverage matrix</h2><p class='empty'>No runs recorded yet.</p></section>"
 
-    models = sorted({r["model"] for r in tbl})
+    # row = (part, model); with a single (or absent) part the label is just the model
+    row_keys = sorted({(r["part"] or "", r["model"]) for r in tbl})
+    multi_part = len({p for p, _ in row_keys}) > 1
     kinds = sorted({r["input_kind"] for r in tbl})
-    cell = {(r["model"], r["input_kind"]): r for r in tbl}
+    cell = {(r["part"] or "", r["model"], r["input_kind"]): r for r in tbl}
 
     head = "".join(f"<th>{_e(k)}</th>" for k in kinds)
     body = []
-    for m in models:
+    for part, m in row_keys:
+        label = f"{part} / {m}" if (multi_part and part) else m
         tds = []
         for k in kinds:
-            c = cell.get((m, k))
+            c = cell.get((part, m, k))
             if c is None:
                 tds.append("<td class='cov-cell empty'>&mdash;</td>")
                 continue
@@ -123,15 +139,17 @@ def _coverage_section(rows: list[RunRecord]) -> str:
                 f"<span class='sub'>n={c['n']} &middot; code {c['valid_code_pct']:.0f}%"
                 f" &middot; IoU {_fmt(c['mean_iou'], 2)}</span></td>"
             )
-        body.append(f"<tr><th class='rowhead'>{_e(m)}</th>{''.join(tds)}</tr>")
+        body.append(f"<tr><th class='rowhead'>{_e(label)}</th>{''.join(tds)}</tr>")
 
+    rowhead = "part / model \\ input_kind" if multi_part else "model \\ input_kind"
     return (
         "<section><h2>Coverage matrix</h2>"
         "<p class='note'>Cell shading tracks valid-geometry rate. "
         "Each cell: geom% (large), then run count, valid-code%, mean IoU.</p>"
         "<div class='scroll'><table class='cov'>"
-        f"<thead><tr><th>model \\ input_kind</th>{head}</tr></thead>"
-        f"<tbody>{''.join(body)}</tbody></table></div></section>"
+        f"<thead><tr><th>{_e(rowhead)}</th>{head}</tr></thead>"
+        f"<tbody>{''.join(body)}</tbody></table></div>"
+        f"<p class='note caveat'>{_RESOLUTION_CAVEAT}</p></section>"
     )
 
 
@@ -147,7 +165,7 @@ def _runs_section(rows: list[RunRecord]) -> str:
             v = d.get(f)
             if f in ("iou", "chamfer", "wall_s"):
                 tds.append(f"<td class='num'>{_fmt(v)}</td>")
-            elif f in ("valid_code", "valid_geometry"):
+            elif f in ("valid_code", "valid_geometry", "watertight"):
                 mark = "&#10003;" if v is True else ("&times;" if v is False else "&mdash;")
                 cls = "ok" if v is True else ("bad" if v is False else "")
                 tds.append(f"<td class='mark {cls}'>{mark}</td>")
@@ -207,6 +225,8 @@ h2 {{
 section {{ margin-bottom: 3rem; }}
 .meta {{ font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .8rem; color: #5c6672; }}
 .note {{ font-size: .85rem; color: #5c6672; margin: 0 0 1rem; }}
+.note.caveat {{ margin: .9rem 0 0; border-left: 3px solid {_RED}; padding-left: .75rem; }}
+.note code {{ font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .8rem; }}
 .empty {{ font-style: italic; color: #8a8f97; }}
 .scroll {{ overflow-x: auto; border: 1px solid {_HAIRLINE}; border-radius: 3px; }}
 table {{
@@ -242,7 +262,11 @@ footer {{ margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid {_HAIRLI
 
 
 def build_report(runs_path, out_html, prepared_dir=None) -> None:
-    """Write a standalone ``report.html`` summarising ``runs_path``."""
+    """Write a standalone ``report.html`` summarising ``runs_path``.
+
+    ``runs_path`` is a ``runs.jsonl`` file **or** a directory of per-array-task
+    shards (``results/runs.d/``) -- see :func:`cad_trials.common.io.load_runs`.
+    """
     rows = load_runs(runs_path)
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     n_models = len({r.model for r in rows})
@@ -275,4 +299,4 @@ def build_report(runs_path, out_html, prepared_dir=None) -> None:
 """
     out = Path(out_html)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(doc)
+    out.write_text(doc, encoding="utf-8")

@@ -168,6 +168,7 @@ def main(argv=None) -> None:
     weights = args.weights or DEFAULT_WEIGHTS
     inputs = iter_inputs(args.inputs)
     out_dir = Path(args.out_dir)
+    prefix = f"{args.part}+" if args.part else ""
 
     model = load_model(weights)
     tokenizer = load_tokenizer()
@@ -176,7 +177,8 @@ def main(argv=None) -> None:
         stem = input_path.stem  # pc_256
         gt = gt_for(stem, args.gt)
         for k in range(args.n_samples):
-            if already_done("cadrecode", str(input_path), k, args.runs_path):
+            if already_done("cadrecode", str(input_path), k, args.runs_path,
+                            retry_errors=args.retry_errors):
                 continue
 
             t0 = time.perf_counter()
@@ -186,6 +188,8 @@ def main(argv=None) -> None:
             res = None
             n_points: int | None = None
 
+            # Every per-sample step -- load, generate, write, execute -- is inside
+            # this guard: one bad sample must not kill an 8-hour array task.
             try:
                 points = load_points(input_path)
                 n_points = int(points.shape[0])
@@ -193,23 +197,26 @@ def main(argv=None) -> None:
                     model, tokenizer, points, n_samples=1,
                     seed_base=args.seed_base + k,
                     do_sample=args.n_samples > 1)[0]
+                meta = {"weights": weights, "n_points": n_points,
+                        "seed": args.seed_base + k, "part": args.part}
+                out_path = write_output(out_dir, stem, k, code, meta, ext="py",
+                                        prefix=prefix)
+                res = execute_program(code, out_dir / f"{prefix}{stem}+s{k}.stl")
             except Exception as e:  # noqa: BLE001 - record and continue
                 error = f"{type(e).__name__}: {e}"
 
-            if code is not None:
-                meta = {"weights": weights, "n_points": n_points,
-                        "seed": args.seed_base + k}
-                out_path = write_output(out_dir, stem, k, code, meta, ext="py")
-                res = execute_program(code, out_dir / f"{stem}+s{k}.stl")
-
-            append_run(
-                make_record(
-                    model="cadrecode", weights=weights, problem=args.problem,
-                    input_path=input_path, kind=stem, sample=k, out_path=out_path,
-                    res=res, code=code, gt=gt,
-                    wall_s=time.perf_counter() - t0, error=error),
-                args.runs_path,
-            )
+            try:
+                append_run(
+                    make_record(
+                        model="cadrecode", weights=weights, problem=args.problem,
+                        input_path=input_path, kind=stem, sample=k, out_path=out_path,
+                        res=res, code=code, gt=gt, part=args.part,
+                        wall_s=time.perf_counter() - t0, error=error),
+                    args.runs_path,
+                )
+            except Exception as e:  # noqa: BLE001 - ledger write must not abort the task
+                print(f"warning: could not record {stem}+s{k}: "
+                      f"{type(e).__name__}: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

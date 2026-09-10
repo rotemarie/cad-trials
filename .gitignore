@@ -24,13 +24,19 @@ hf_cache/
 checkpoints/
 weights/
 
-# experiment outputs (kept out of git; report.html is committed separately)
+# experiment outputs — none of this is committed. The run ledger and the report
+# are generated from real cluster runs; an earlier synthetic runs.jsonl/report.html
+# was committed by mistake and has been untracked (append_run appends, so a stale
+# ledger would mix fabricated metrics into the first real run).
 cad-trials/results/**/*.stl
 cad-trials/results/**/*.step
 cad-trials/results/**/*.ply
 cad-trials/results/**/*.png
 cad-trials/results/*.tsv
 cad-trials/results/prepared/
+cad-trials/results/runs.jsonl
+cad-trials/results/runs.d/
+cad-trials/results/report.html
 cad-trials/work_dirs/
 work_dirs/
 

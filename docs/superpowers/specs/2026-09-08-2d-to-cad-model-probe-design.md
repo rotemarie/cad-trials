@@ -265,3 +265,60 @@ happen against whatever depth is reached.
 ## 9. Non-goals restated
 No training. No new model. No dimensional metrology. No repo forking beyond shims.
 If a model needs fine-tuning to produce output (SECAD-Net), it is documented, not run.
+
+---
+
+## Plan 2 backlog (from foundation final review)
+
+The `cad-trials/` foundation branch's whole-branch review surfaced work that is
+real but out of scope for a *foundation* branch. The minimal mitigation for each
+item landed in the fix wave (commit "fix: address final review — subprocess exec,
+resume/concurrency, multi-part scaffolding, doc fixes"); the full fix belongs to
+Plan 2. See `.superpowers/sdd/2026-09-08-cad-trials-foundation/final-review-findings.md`
+and the fix report in `task-14-report.md`.
+
+### Research validity
+
+- **B1 — Same-resolution image re-render (from I7).** Image inputs are not fed at
+  equal resolution: `tile_4diag` = 4×128 px views (raw); `render_*` styles = a 2×2
+  viewport downscaled to 128 px, i.e. ~64 px per view; `three_view` = 768×256
+  letterboxed into 128². Any cross-style comparison therefore partly measures
+  input resolution rather than style. *Shipped mitigation:* the coverage matrix in
+  `report.html` carries this caveat inline. *Plan 2:* re-render every image kind at
+  an equal per-view pixel budget and re-run the image branch, so style is the only
+  variable. Until then no style ranking from this harness is publishable.
+
+- **B2 — A real drafting-convention render (from I8).** The style the spec's §"input
+  kinds" table calls `render_draftsheet.png` ("HLR + centrelines + dashed hidden,
+  paper bg") was never implemented: the code drew `hlr_lines` on a beige ground,
+  with no centrelines and no dashed hidden edges. *Shipped mitigation:* the style is
+  renamed `hlr_paper` throughout, so its name no longer overclaims. *Plan 2:*
+  implement the drafting style the spec describes — centrelines plus dashed hidden
+  lines — as a **distinct, additional** style, and keep `hlr_paper` as its control.
+  The spec table's `render_draftsheet.png` row refers to B2, not to `hlr_paper`.
+
+- **B3 — Point-density ablation, or drop the unused clouds.** `prepare_problem1`
+  emits `pc_2048` and `pc_8192`, which no wrapper consumes: both cadrille's PC branch
+  and cad-recode take 256 points, and `make_manifest` only lists `pc_256`. Either
+  drop the extra densities from the prepare step, or make the surplus deliberate by
+  adding a point-density ablation task (feed 2048/8192 through the resampling the
+  checkpoints expect and report whether density moves valid-geometry or IoU).
+
+### Multi-part scale-up
+
+- **B4 — Finish the multi-part path.** The fix wave added the *scaffolding*: a `part`
+  column in `manifest.tsv`, a `--part` wrapper flag that prefixes output filenames,
+  a `part` field on `RunRecord`, ground truth derived from the input's own directory,
+  and `coverage_table` keyed on `(part, model, input_kind)`. It has only ever been
+  exercised with one part. Before running Plan 2's benchmark shapes: prepare several
+  parts, confirm no output or GT crossover, and add per-part grouping/aggregation
+  (and a part selector) to `report.html`.
+
+### Documentation debt
+
+- **B5 — "six render styles".** Prose in the plan/spec lineage says six render
+  styles; `render.STYLES` has five (`shaded_color`, `shaded_hlr`, `wireframe`,
+  `hlr_lines`, `hlr_paper`) — the sixth thing meant is `tile_4diag`, which is a
+  composite, not a style. The `cad-trials/` docs are correct as of the fix wave;
+  the historical plan documents were left as written. Say "five styles plus the
+  `tile_4diag` and `three_view` composites" in anything new.

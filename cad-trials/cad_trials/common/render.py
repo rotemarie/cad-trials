@@ -25,7 +25,11 @@ from matplotlib.collections import LineCollection  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: E402
 from PIL import Image  # noqa: E402
 
-STYLES = ["shaded_color", "shaded_hlr", "wireframe", "hlr_lines", "draftsheet"]
+# NOTE: `hlr_paper` was called `draftsheet` until the foundation final review.
+# It is hlr_lines on a paper-coloured ground -- it has no centrelines and no dashed
+# hidden edges, so it is *not* the drafting-convention style the spec describes.
+# A real drafting render is tracked in the Plan 2 backlog.
+STYLES = ["shaded_color", "shaded_hlr", "wireframe", "hlr_lines", "hlr_paper"]
 
 FRONTS = [(1, 1, 1), (-1, -1, -1), (-1, 1, -1), (1, -1, 1)]
 
@@ -40,7 +44,7 @@ _STYLE_PARAMS = {
     "shaded_hlr": dict(fill="#b8b8b8", shade=True, edge="#222222", lw=0.3, bg="white"),
     "wireframe": dict(fill=None, shade=False, edge="#222222", lw=0.4, bg="white"),
     "hlr_lines": dict(fill="#ffffff", shade=False, edge="#111111", lw=0.6, bg="white"),
-    "draftsheet": dict(fill="#ffffff", shade=False, edge="#111111", lw=0.7, bg="#f0efe6"),
+    "hlr_paper": dict(fill="#ffffff", shade=False, edge="#111111", lw=0.7, bg="#f0efe6"),
 }
 
 

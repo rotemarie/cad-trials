@@ -39,10 +39,22 @@ if [ -z "$line" ]; then
     exit 1
 fi
 
-# Parse tab-separated columns: model, input_path, input_kind, n_samples, env
-IFS=$'\t' read -r model input_path input_kind n_samples env <<< "$line"
+# Parse tab-separated columns: part, model, input_path, input_kind, n_samples, env
+IFS=$'\t' read -r part model input_path input_kind n_samples env <<< "$line"
 
-echo "Task $SLURM_ARRAY_TASK_ID: model=$model, input_kind=$input_kind, env=$env"
+echo "Task $SLURM_ARRAY_TASK_ID: part=$part, model=$model, input_kind=$input_kind, env=$env"
+
+# Ground truth lives next to the input, inside that part's prepared dir — deriving
+# it keeps multi-part manifests from scoring every part against part 1's mesh.
+gt="$(dirname "$input_path")/normalized.stl"
+
+# Each array task writes its OWN ledger shard. Concurrent unlocked appends to a
+# single runs.jsonl on NFS can interleave and tear a line. One array task owns one
+# (part, model, input) pair and all its samples, so its shard is all it needs to
+# read for the resume check. Reports read the whole directory:
+#   build_report('cad-trials/results/runs.d', ...)
+runs_path="cad-trials/results/runs.d/${SLURM_ARRAY_TASK_ID}.jsonl"
+mkdir -p "$(dirname "$runs_path")"
 
 # Activate conda environment
 conda activate "$env"
@@ -51,7 +63,8 @@ conda activate "$env"
 python -m cad_trials.models."$model" \
     --inputs "$input_path" \
     --out-dir cad-trials/results/"$model" \
-    --gt cad-trials/results/prepared/part/normalized.stl \
+    --gt "$gt" \
+    --part "$part" \
     --n-samples "$n_samples" \
-    --runs-path cad-trials/results/runs.jsonl \
+    --runs-path "$runs_path" \
     --problem p1

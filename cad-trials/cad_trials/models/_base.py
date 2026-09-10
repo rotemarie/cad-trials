@@ -32,6 +32,14 @@ def standard_parser(description: str) -> argparse.ArgumentParser:
                    help="which problem variant to run")
     p.add_argument("--gt", default="",
                    help="ground-truth mesh file, or a dir of meshes keyed by stem")
+    p.add_argument("--part", default="part",
+                   help="part identifier (the prepared dir's basename); prefixes "
+                        "output filenames and is recorded on every RunRecord so "
+                        "several parts can share one out-dir and one ledger")
+    p.add_argument("--retry-errors", action="store_true",
+                   help="re-run (model, input, sample) rows that were recorded "
+                        "with an error; by default any recorded attempt counts "
+                        "as done")
     return p
 
 
@@ -50,34 +58,48 @@ def iter_inputs(patterns: list[str]) -> list[Path]:
 
 
 def write_output(out_dir, stem: str, sample: int, payload: str, meta: dict,
-                 ext: str = "py") -> Path:
-    """Write one sample's payload and append its meta to ``<stem>.meta.json``.
+                 ext: str = "py", prefix: str = "") -> Path:
+    """Write one sample's payload and record its meta in ``<prefix><stem>.meta.json``.
+
+    ``prefix`` (the wrappers pass ``f"{part}+"``) namespaces the filenames so two
+    parts with the same input stem -- e.g. ``pc_256.ply`` under two prepared dirs --
+    cannot overwrite each other's outputs in a shared ``out_dir``.
+
+    A re-run of an existing sample **replaces** its meta entry rather than
+    appending a duplicate, so a resumed array task leaves one entry per sample.
 
     Returns the path of the payload file.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    out_path = out_dir / f"{stem}+s{sample}.{ext}"
-    out_path.write_text(payload)
+    out_path = out_dir / f"{prefix}{stem}+s{sample}.{ext}"
+    out_path.write_text(payload, encoding="utf-8")
 
-    meta_path = out_dir / f"{stem}.meta.json"
+    meta_path = out_dir / f"{prefix}{stem}.meta.json"
     if meta_path.exists():
-        doc = json.loads(meta_path.read_text())
+        doc = json.loads(meta_path.read_text(encoding="utf-8"))
     else:
         doc = {"stem": stem, "samples": []}
     doc.setdefault("samples", [])
     entry = {"sample": sample, "output_path": str(out_path), **meta}
+    doc["samples"] = [s for s in doc["samples"] if s.get("sample") != sample]
     doc["samples"].append(entry)
-    meta_path.write_text(json.dumps(doc, indent=2))
+    doc["samples"].sort(key=lambda s: s.get("sample", 0))
+    meta_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
 
     return out_path
 
 
 def already_done(model: str, input_path: str, sample: int,
-                 runs_path: str = io.DEFAULT_PATH) -> bool:
-    """True when a successful run for (model, input_path, sample) already exists."""
-    return io.run_exists(model, input_path, sample, runs_path)
+                 runs_path: str = io.DEFAULT_PATH,
+                 retry_errors: bool = False) -> bool:
+    """True when (model, input_path, sample) has already been attempted.
+
+    Any recorded row counts -- error rows included -- unless ``retry_errors``.
+    """
+    return io.run_exists(model, input_path, sample, runs_path,
+                         retry_errors=retry_errors)
 
 
 def gt_for(stem: str, gt_arg: str) -> str | None:

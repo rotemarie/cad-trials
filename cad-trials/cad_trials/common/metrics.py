@@ -16,14 +16,24 @@ _OP_RE = re.compile(
     r"hole|cboreHole|cskHole)\s*\(")
 
 
+class FillFailed(RuntimeError):
+    """Interior voxel fill failed -- the mesh is open / non-watertight.
+
+    Raised instead of silently falling back to a *surface-only* occupancy grid:
+    a surface-only grid compared against a solid-filled one yields a plausible
+    but meaningless low IoU, indistinguishable from a genuinely wrong shape.  An
+    unscorable ``iou=None`` is an honest gap; a fill artifact dressed as a score
+    is not.
+    """
+
+
 def _voxel_occupancy(mesh: trimesh.Trimesh, res: int, bounds: np.ndarray) -> np.ndarray:
     """Boolean occupancy grid for ``mesh`` binned into a common ``bounds`` frame.
 
     ``bounds`` is ``[[lo], [hi]]``; ``pitch`` is derived from the longest axis of
     that shared box so two meshes voxelised against the same ``bounds`` land on the
-    same lattice. The mesh is voxelised with ``trimesh`` and interior-filled; if the
-    fill fails (open / non-watertight predicted meshes) it falls back to a
-    surface-only occupancy grid.
+    same lattice. The mesh is voxelised with ``trimesh`` and interior-filled;
+    a failed fill raises :class:`FillFailed`.
     """
     lo = np.asarray(bounds[0], dtype=float)
     hi = np.asarray(bounds[1], dtype=float)
@@ -33,9 +43,8 @@ def _voxel_occupancy(mesh: trimesh.Trimesh, res: int, bounds: np.ndarray) -> np.
     try:
         vg = mesh.voxelized(pitch=pitch).fill()
         pts = np.asarray(vg.points)
-    except Exception:
-        vg = mesh.voxelized(pitch=pitch)
-        pts = np.asarray(vg.points)
+    except Exception as e:  # noqa: BLE001 - any fill failure is unscorable
+        raise FillFailed(f"interior voxel fill failed: {type(e).__name__}: {e}") from e
 
     grid = np.zeros(tuple(dims), dtype=bool)
     if len(pts) == 0:
@@ -59,6 +68,8 @@ def voxel_iou(a: trimesh.Trimesh, b: trimesh.Trimesh, res: int = 64,
 
     ``shared_frame=True``: skip per-mesh normalisation and voxelise both in a
     common frame (the union of their bounds) for an honest overlap measurement.
+
+    Raises :class:`FillFailed` when either mesh cannot be interior-filled.
     """
     if shared_frame:
         lo = np.minimum(a.bounds[0], b.bounds[0])

@@ -22,20 +22,22 @@ Harness for reproducing and extending the CAD design task benchmarks.
    ```bash
    python -m pytest cad-trials/ -v
    ```
-   Expected: ~34 passing tests (Tasks 1–7).
+   Expected: 55 passed, 3 skipped (the 3 skips are the GPU smoke tests — see below).
 
 4. **Prepare Problem 1 inputs:**
    ```bash
-   python -m cad_trials.data.prepare_problem1
+   python -m cad_trials.data.prepare_problem1 --stl output/fine.STL \
+       --out-dir cad-trials/results/prepared/part
    ```
-   Generates the seed meshes and renders (STL, images) into `cad-trials/data/prepared/`.
+   Writes `normalized.stl`, the `render_*.png` styles, `tile_4diag.png`,
+   `three_view.png` and the `pc_*.ply` point clouds into that part directory.
 
 5. **Per-model environments & inference:**
-   See `envs/` directory for per-model environment specs (added in later plans).
-   Each model has its own conda/pip stack and inference entrypoint.
+   See `envs/` for the per-model environment runbooks; each model has its own
+   conda stack and its own wrapper under `cad_trials/models/`.
 
 6. **Cluster job submission:**
-   See `slurm/` directory for job templates (added in later plans).
+   See `slurm/` (`prepare.sbatch`, `run_model.sbatch`) and the end-to-end runbook below.
 
 ## Environment Setup
 
@@ -65,7 +67,8 @@ No slow tests yet; full suite runs in <1 min on most hardware.
 
 ## Run Record Schema
 
-All trial runs are appended to `cad-trials/results/runs.jsonl`, one JSON object per line.
+All trial runs are appended to the ledger — `cad-trials/results/runs.d/<task_id>.jsonl`
+on the cluster, `cad-trials/results/runs.jsonl` locally — one JSON object per line.
 
 **`RunRecord` fields:**
 
@@ -86,6 +89,11 @@ All trial runs are appended to `cad-trials/results/runs.jsonl`, one JSON object 
 | `chamfer` | float \| None | Chamfer distance vs. ground truth |
 | `n_ops` | int \| None | Number of CAD operations in output |
 | `gt_path` | str \| None | Ground truth reference path |
+| `watertight` | bool \| None | Whether the executed mesh is closed (from `ExecResult`) |
+| `part` | str \| None | Part identifier (prepared dir basename); `None` on pre-multi-part rows |
+
+`watertight` and `part` were appended after the first ledgers were written; both
+default to `None`, and `load_runs` reads older rows unchanged.
 
 **Example:**
 ```json
@@ -119,7 +127,9 @@ All trial runs are appended to `cad-trials/results/runs.jsonl`, one JSON object 
 - `render_shaded_hlr` — grey fill with hidden-line removal edges
 - `render_wireframe` — wireframe only (no fill)
 - `render_hlr_lines` — white fill with hidden-line removal (thin edges)
-- `render_draftsheet` — technical drawing style (white on beige bg, heavy edges)
+- `render_hlr_paper` — `hlr_lines` on a paper-coloured ground (white fill, heavy edges, beige bg).
+  Note this is *not* a drafting-convention render: it has no centrelines and no dashed
+  hidden edges. A true drafting style is tracked in the Plan 2 backlog.
 
 **Composite renderings:**
 - `tile_4diag` — four shaded diagonal views (128×128 ea., 3-px black borders, 2x2 tiled)
@@ -138,29 +148,42 @@ cad-trials/
 ├── README.md                    (this file)
 ├── envs/
 │   ├── probe-common.md          (cluster + local Python/cadquery setup)
-│   ├── model-a.md               (model A inference env — added later)
-│   └── model-b.md               (model B inference env — added later)
+│   ├── cadrille.md              (cadrille_img + cadrille_pc inference env)
+│   └── cadrecode.md             (cadrecode inference env)
 ├── cad_trials/                  (package)
 │   ├── __init__.py
-│   ├── common/
-│   │   ├── io.py                (RunRecord, append_run)
+│   ├── common/                  (torch-free: runs in probe-common)
+│   │   ├── io.py                (RunRecord, append_run, load_runs, run_exists)
 │   │   ├── render.py            (render_style, four_diagonal_tile, ortho_three_view)
-│   │   ├── geometry.py          (mesh I/O and validation)
-│   │   └── problem.py           (problem definitions, seed generation)
-│   └── data/
-│       └── prepare_problem1.py  (generates seeds and ground truth)
-├── tests/
-│   ├── test_render.py
-│   ├── test_geometry.py
-│   ├── test_problem.py
-│   └── test_io.py
+│   │   ├── meshes.py            (mesh load / normalize / point-cloud sampling)
+│   │   ├── execute.py           (subprocess CadQuery → STL, ExecResult)
+│   │   ├── metrics.py           (voxel IoU, Chamfer, op count)
+│   │   ├── scoring.py           (score + make_record, shared by all wrappers)
+│   │   └── report.py            (runs.jsonl → report.html)
+│   ├── models/                  (per-model wrappers; import torch)
+│   │   ├── _base.py             (standard_parser, iter_inputs, write_output, gt_for)
+│   │   ├── _cadrille_common.py  (shared cadrille load/generate surface)
+│   │   ├── cadrille_img.py
+│   │   ├── cadrille_pc.py
+│   │   └── cadrecode.py
+│   ├── data/
+│   │   └── prepare_problem1.py  (STL → renders + point clouds + normalized.stl)
+│   └── slurm/
+│       └── make_manifest.py     (prepared dirs × models → manifest.tsv)
+├── tests/                       (test_render, test_meshes, test_execute, test_metrics,
+│                                 test_io, test_base, test_scoring, test_report,
+│                                 test_make_manifest, test_prepare_problem1,
+│                                 test_*_smoke — GPU, skipped by default)
 ├── data/
-│   ├── benchmarks/              (large benchmark meshes, not committed)
-│   └── prepared/                (generated seeds/renders, not committed)
-├── results/
-│   ├── runs.jsonl               (trial log)
-│   └── prepared/                (inference outputs, not committed)
-└── slurm/                        (cluster job templates — added later)
+│   └── benchmarks/              (large benchmark meshes, not committed)
+├── results/                     (nothing here is committed)
+│   ├── prepared/<part>/         (model INPUTS: renders, point clouds, normalized.stl)
+│   ├── <model>/                 (model OUTPUTS: generated .py + executed .stl)
+│   ├── manifest.tsv             (array-job task list)
+│   ├── runs.d/<task_id>.jsonl   (per-array-task ledger shards — the cluster path)
+│   ├── runs.jsonl               (single-file ledger — local / single-process runs)
+│   └── report.html              (generated deliverable)
+└── slurm/                       (prepare.sbatch, run_model.sbatch)
 ```
 
 ## Run Everything (BGU Cluster)
@@ -169,15 +192,14 @@ This is the end-to-end workflow to run all models (cadrille_img, cadrille_pc, ca
 
 ### Prerequisites
 
-One-time environment setup:
-```bash
-# Create probe-common environment (for prepare step)
-bash envs/probe-common.md
+One-time environment setup. These files are prose runbooks, not scripts — **follow
+the steps in** each, don't try to execute the file:
 
-# Create per-model environments
-bash envs/cadrille.md       # for cadrille_img and cadrille_pc
-bash envs/cadrecode.md      # for cadrecode
-```
+- [`cad-trials/envs/probe-common.md`](envs/probe-common.md) — the `probe-common` env used by
+  the prepare step, the report, and the test suite.
+- [`cad-trials/envs/cadrille.md`](envs/cadrille.md) — the `cadrille` env, for `cadrille_img`
+  and `cadrille_pc`.
+- [`cad-trials/envs/cadrecode.md`](envs/cadrecode.md) — the `cadrecode` env, for `cadrecode`.
 
 ### Step 1: Prepare reference-part inputs (CPU-only, ~few minutes)
 
@@ -191,22 +213,47 @@ sbatch cad-trials/slurm/prepare.sbatch
 
 ```bash
 PYTHONPATH=$PWD/cad-trials python -m cad_trials.slurm.make_manifest
-# Output: cad-trials/results/manifest.tsv (9 tasks = 3 models × 3 input_kinds)
+# Output: cad-trials/results/manifest.tsv
 ```
+
+For one prepared part this is **9 tasks**, not "3 models × 3 kinds" — the models do
+not share an input vocabulary:
+
+| model | input kinds | tasks |
+|-------|-------------|-------|
+| `cadrille_img` | 5 `render_*` styles + `tile_4diag` + `three_view` | 7 |
+| `cadrille_pc` | `pc_256` | 1 |
+| `cadrecode` | `pc_256` | 1 |
+
+Manifest columns are `part`, `model`, `input_path`, `input_kind`, `n_samples`, `env`.
+Preparing a second part adds another 9 rows; `part` keeps their outputs and their
+ground truth apart.
 
 ### Step 3: Run all model×input tasks as a resumable array job
 
 ```bash
 sbatch --array=1-$(wc -l < cad-trials/results/manifest.tsv) cad-trials/slurm/run_model.sbatch
-# Resumable: re-submitting the same command skips any (model, input, sample) rows already in runs.jsonl
+# Resumable: re-submitting skips any (model, input, sample) already recorded.
+# Add --retry-errors on the wrapper CLI to re-attempt rows that recorded an error.
 ```
+
+Each array task writes its own ledger shard, `cad-trials/results/runs.d/<task_id>.jsonl` —
+concurrent unlocked appends to one `runs.jsonl` on NFS can interleave and tear a line.
+A task only ever needs to read its own shard for the resume check, since one task owns
+one `(part, model, input)` pair and all its samples.
 
 ### Step 4: Build the report
 
+Point `build_report` at the shard **directory** — it reads and concatenates every
+`*.jsonl` in it:
+
 ```bash
-PYTHONPATH=$PWD/cad-trials python -c "from cad_trials.common.report import build_report; build_report('cad-trials/results/runs.jsonl','cad-trials/results/report.html','cad-trials/results/prepared/part')"
+PYTHONPATH=$PWD/cad-trials python -c "from cad_trials.common.report import build_report; build_report('cad-trials/results/runs.d','cad-trials/results/report.html','cad-trials/results/prepared/part')"
 # Output: cad-trials/results/report.html
 ```
+
+A single-file ledger still works (`build_report('cad-trials/results/runs.jsonl', ...)`)
+for local single-process runs.
 
 ### GPU Smoke Tests (Optional)
 
@@ -222,15 +269,16 @@ The three smoke tests (`test_cadrille_img_smoke.py`, `test_cadrille_pc_smoke.py`
 
 ### Important Notes
 
-- **Clean slate:** Before the first real run, remove any synthetic placeholder data:
-  ```bash
-  rm cad-trials/results/runs.jsonl
-  ```
-  The `runs.jsonl` file accumulates across multiple cluster runs; re-submitting the array job will skip rows already present.
+- **Clean slate:** ledgers are append-only and accumulate across cluster runs. To start
+  a genuinely fresh survey, remove them: `rm -rf cad-trials/results/runs.d cad-trials/results/runs.jsonl`.
+  Nothing under `results/` is tracked by git, so a checkout never carries someone
+  else's (or a synthetic) ledger into your run.
 
-- **Manifest:** The manifest (`cad-trials/results/manifest.tsv`) lists all model×input×sample combinations. It is generated fresh each time and determines the array size.
+- **Manifest:** The manifest (`cad-trials/results/manifest.tsv`) lists all part×model×input
+  tasks. It is generated fresh each time and determines the array size.
 
-- **Output:** Final results are in `cad-trials/results/report.html`. The raw trial log is `cad-trials/results/runs.jsonl`.
+- **Output:** Final results are in `cad-trials/results/report.html`. The raw trial log is
+  `cad-trials/results/runs.d/` (or `runs.jsonl` for a local run).
 
 ## Development
 
@@ -251,8 +299,7 @@ python -m pytest cad-trials/ -v
 ### Editing renders or Problem 1 definition
 
 - Image renders: `cad_trials/common/render.py`
-- Mesh I/O and validation: `cad_trials/common/geometry.py`
-- Problem definition and seed generation: `cad_trials/common/problem.py`
-- Data preparation script: `cad_trials/data/prepare_problem1.py`
+- Mesh I/O, normalization, point-cloud sampling: `cad_trials/common/meshes.py`
+- Data preparation (problem definition + seed generation): `cad_trials/data/prepare_problem1.py`
 
 Remember to update `pytest.ini` at repo root if test locations change.
