@@ -163,6 +163,75 @@ cad-trials/
 └── slurm/                        (cluster job templates — added later)
 ```
 
+## Run Everything (BGU Cluster)
+
+This is the end-to-end workflow to run all models (cadrille_img, cadrille_pc, cadrecode) on the reference part (Problem 1, seed 001) and generate the report.
+
+### Prerequisites
+
+One-time environment setup:
+```bash
+# Create probe-common environment (for prepare step)
+bash envs/probe-common.md
+
+# Create per-model environments
+bash envs/cadrille.md       # for cadrille_img and cadrille_pc
+bash envs/cadrecode.md      # for cadrecode
+```
+
+### Step 1: Prepare reference-part inputs (CPU-only, ~few minutes)
+
+```bash
+cd /path/to/CAD
+sbatch cad-trials/slurm/prepare.sbatch
+# Wait for job to complete
+```
+
+### Step 2: Build the manifest (after prepare finishes)
+
+```bash
+PYTHONPATH=$PWD/cad-trials python -m cad_trials.slurm.make_manifest
+# Output: cad-trials/results/manifest.tsv (9 tasks = 3 models × 3 input_kinds)
+```
+
+### Step 3: Run all model×input tasks as a resumable array job
+
+```bash
+sbatch --array=1-$(wc -l < cad-trials/results/manifest.tsv) cad-trials/slurm/run_model.sbatch
+# Resumable: re-submitting the same command skips any (model, input, sample) rows already in runs.jsonl
+```
+
+### Step 4: Build the report
+
+```bash
+PYTHONPATH=$PWD/cad-trials python -c "from cad_trials.common.report import build_report; build_report('cad-trials/results/runs.jsonl','cad-trials/results/report.html','cad-trials/results/prepared/part')"
+# Output: cad-trials/results/report.html
+```
+
+### GPU Smoke Tests (Optional)
+
+To run the GPU smoke tests for real on the cluster (instead of skipping them), enable the model-specific flags:
+
+```bash
+CADRILLE_WEIGHTS_OK=1 CADRECODE_WEIGHTS_OK=1 python -m pytest cad-trials/ -v
+```
+
+The three smoke tests (`test_cadrille_img_smoke.py`, `test_cadrille_pc_smoke.py`, `test_cadrecode_smoke.py`) are skipped by default because they require GPU and model weights. They check for:
+- `CADRILLE_WEIGHTS_OK` — enables cadrille_img and cadrille_pc smoke tests
+- `CADRECODE_WEIGHTS_OK` — enables cadrecode smoke test
+
+### Important Notes
+
+- **Clean slate:** Before the first real run, remove any synthetic placeholder data:
+  ```bash
+  rm cad-trials/results/runs.jsonl
+  ```
+  The `runs.jsonl` file accumulates across multiple cluster runs; re-submitting the array job will skip rows already present.
+
+- **Manifest:** The manifest (`cad-trials/results/manifest.tsv`) lists all model×input×sample combinations. It is generated fresh each time and determines the array size.
+
+- **Output:** Final results are in `cad-trials/results/report.html`. The raw trial log is `cad-trials/results/runs.jsonl`.
+
 ## Development
 
 ### Adding a new model
