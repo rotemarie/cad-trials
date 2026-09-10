@@ -4,12 +4,10 @@ Runs the pretrained ``cadrille`` model (Qwen2-VL-2B backbone) on a ``.ply`` poin
 cloud, executes the generated CadQuery, scores it against a ground-truth mesh, and
 appends one :class:`~cad_trials.common.io.RunRecord` per (input, sample).
 
-Generation logic mirrors :mod:`cad_trials.models.cadrille_img` and the vendored
-``test.py`` ``--mode pc`` path: same ``collate`` + ``model.generate`` +
-``batch_decode``, restructured onto :mod:`cad_trials.models._base`.  The only
-substantive difference from the image wrapper is the input message
-(``{'point_cloud': <array>, 'description': ..., 'file_name': ...}`` -- no
-``'video'`` key, so ``collate`` sets ``is_pc[i]=1``) and the point normalization.
+The shared model-load / generate / scoring / RunRecord surface lives in
+:mod:`cad_trials.models._cadrille_common`; this module holds only the
+point-cloud-specific parts: loading the ``.ply``, the checkpoint-space
+normalization, the ``{"point_cloud": ...}`` message shape, and the ``main`` glue.
 
 CLI::
 
@@ -19,28 +17,20 @@ CLI::
         --gt results/prepared/part/normalized.stl \
         --n-samples 5 [--seed-base 0] [--weights maksimko123/cadrille]
 
-``torch`` / ``transformers`` / ``cadrille`` are imported at module load: importing
-this module requires a working cadrille environment (see ``envs/cadrille.md``).
+``torch`` / ``transformers`` / ``cadrille`` are imported at module load (via
+``_cadrille_common``): importing this module requires a working cadrille
+environment (see ``envs/cadrille.md``).
 """
 from __future__ import annotations
 
-import sys
 import time
 from pathlib import Path
 
 import numpy as np
-import torch
 import trimesh
-from transformers import AutoProcessor
 
-# vendored upstream repo (git-ignored: cad-trials/vendor/cadrille) must be importable
-sys.path.insert(0, str(Path(__file__).parents[2] / "vendor" / "cadrille"))
-from cadrille import Cadrille, collate  # noqa: E402
-
-from cad_trials.common.execute import execute_program, valid_geometry  # noqa: E402
-from cad_trials.common.io import RunRecord, append_run  # noqa: E402
-from cad_trials.common.meshes import load_mesh  # noqa: E402
-from cad_trials.common.metrics import chamfer_distance, count_ops, voxel_iou  # noqa: E402
+from cad_trials.common.execute import execute_program  # noqa: E402
+from cad_trials.common.io import append_run  # noqa: E402
 from cad_trials.models._base import (  # noqa: E402
     already_done,
     gt_for,
@@ -48,37 +38,14 @@ from cad_trials.models._base import (  # noqa: E402
     standard_parser,
     write_output,
 )
-
-DEFAULT_WEIGHTS = "maksimko123/cadrille"
-PROCESSOR_ID = "Qwen/Qwen2-VL-2B-Instruct"
-DESCRIPTION = "Generate cadquery code"
-
-
-def load_model(weights_id: str) -> "Cadrille":
-    """Load cadrille weights onto CUDA (or CPU), trying fast attention first."""
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    for attn in ("flash_attention_2", "sdpa"):
-        try:
-            model = Cadrille.from_pretrained(
-                weights_id,
-                torch_dtype=torch.bfloat16,
-                attn_implementation=attn,
-                device_map=device,
-            ).eval()
-            print(f"loaded {weights_id} on {device} with attn={attn}")
-            return model
-        except (ImportError, ValueError) as e:
-            print(f"attn={attn} unavailable ({e}); falling back")
-    raise RuntimeError("could not load cadrille model")
-
-
-def load_processor() -> AutoProcessor:
-    return AutoProcessor.from_pretrained(
-        PROCESSOR_ID,
-        min_pixels=256 * 28 * 28,
-        max_pixels=1280 * 28 * 28,
-        padding_side="left",
-    )
+from cad_trials.models._cadrille_common import (  # noqa: E402
+    DEFAULT_WEIGHTS,
+    DESCRIPTION,
+    generate_codes,
+    load_model,
+    load_processor,
+    make_record,
+)
 
 
 def load_points(path) -> np.ndarray:
@@ -114,57 +81,17 @@ def run_cadrille_pc(model, processor, points: np.ndarray, n_samples: int,
                     max_new_tokens: int = 768) -> list[str]:
     """Pure inference: return ``n_samples`` CadQuery code strings for one cloud.
 
-    ``points`` is the raw ``[-0.5, 0.5]`` cloud; it is normalized here.  A distinct
-    torch seed (``seed_base + k``) is set before each ``generate`` so sampled
-    decodes differ. ``temperature > 0`` -> ``do_sample=True``.
+    ``points`` is the raw ``[-0.5, 0.5]`` cloud; it is normalized here, then handed
+    to :func:`cad_trials.models._cadrille_common.generate_codes` as a
+    ``{"point_cloud": ...}`` message.  ``n_points`` (= the actual point count) is
+    passed through so ``pc_2048`` / ``pc_8192`` clouds work as well as ``pc_256``.
     """
-    do_sample = temperature is not None and temperature > 0
     pc = normalize_points(points).astype(np.float32)
-    n_points = pc.shape[0]
     item = {"point_cloud": pc, "description": DESCRIPTION, "file_name": "x"}
-    codes: list[str] = []
-    for k in range(n_samples):
-        torch.manual_seed(seed_base + k)
-        batch = collate([item], processor=processor, n_points=n_points, eval=True)
-        pvv = batch.get("pixel_values_videos")
-        vgt = batch.get("video_grid_thw")
-        with torch.no_grad():
-            generated = model.generate(
-                input_ids=batch["input_ids"].to(model.device),
-                attention_mask=batch["attention_mask"].to(model.device),
-                point_clouds=batch["point_clouds"].to(model.device),
-                is_pc=batch["is_pc"].to(model.device),
-                is_img=batch["is_img"].to(model.device),
-                pixel_values_videos=pvv.to(model.device) if pvv is not None else None,
-                video_grid_thw=vgt.to(model.device) if vgt is not None else None,
-                max_new_tokens=max_new_tokens,
-                do_sample=do_sample,
-                temperature=temperature if do_sample else None,
-            )
-        trimmed = [o[len(i):] for i, o in zip(batch["input_ids"], generated)]
-        decoded = processor.batch_decode(
-            trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        codes.append(decoded[0])
-    return codes
-
-
-def _score(pred_stl: str, gt_path: str) -> tuple[float | None, float | None]:
-    """(voxel_iou, chamfer) for a predicted STL vs GT; None on any load/metric error."""
-    try:
-        pred_mesh = load_mesh(pred_stl)
-        gt_mesh = load_mesh(gt_path)
-    except Exception:
-        return None, None
-    iou = chamfer = None
-    try:
-        iou = voxel_iou(pred_mesh, gt_mesh)
-    except Exception:
-        iou = None
-    try:
-        chamfer = chamfer_distance(pred_mesh, gt_mesh)
-    except Exception:
-        chamfer = None
-    return iou, chamfer
+    return generate_codes(
+        model, processor, item, n_samples=n_samples, seed_base=seed_base,
+        temperature=temperature, max_new_tokens=max_new_tokens,
+        n_points=pc.shape[0])
 
 
 def main(argv=None) -> None:
@@ -191,8 +118,6 @@ def main(argv=None) -> None:
             code: str | None = None
             out_path: Path | None = None
             res = None
-            iou = chamfer = None
-            n_ops = None
             n_points: int | None = None
 
             try:
@@ -209,30 +134,13 @@ def main(argv=None) -> None:
                         "seed": args.seed_base + k}
                 out_path = write_output(out_dir, stem, k, code, meta, ext="py")
                 res = execute_program(code, out_dir / f"{stem}+s{k}.stl")
-                if res.error and error is None:
-                    error = res.error
-                n_ops = count_ops(code)
-                if res.ok and gt:
-                    iou, chamfer = _score(res.stl_path, gt)
 
             append_run(
-                RunRecord(
-                    model="cadrille_pc",
-                    weights_id=weights,
-                    problem=args.problem,
-                    input_path=str(input_path),
-                    input_kind=stem,
-                    sample=k,
-                    output_path=str(out_path) if out_path is not None else None,
-                    wall_s=time.perf_counter() - t0,
-                    error=error,
-                    valid_code=bool(res.ok) if res is not None else False,
-                    valid_geometry=valid_geometry(res) if res is not None else False,
-                    iou=iou,
-                    chamfer=chamfer,
-                    n_ops=n_ops,
-                    gt_path=gt,
-                ),
+                make_record(
+                    model="cadrille_pc", weights=weights, problem=args.problem,
+                    input_path=input_path, kind=stem, sample=k, out_path=out_path,
+                    res=res, code=code, gt=gt,
+                    wall_s=time.perf_counter() - t0, error=error),
                 args.runs_path,
             )
 
