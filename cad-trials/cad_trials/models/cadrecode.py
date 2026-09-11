@@ -59,21 +59,31 @@ MAX_NEW_TOKENS = 768
 
 
 def load_model(weights_id: str) -> "CADRecode":
-    """Load cad-recode weights onto CUDA (or CPU); flash-attn only when on CUDA.
+    """Load cad-recode weights onto CUDA (or CPU), preferring flash-attn on CUDA.
 
-    Mirrors ``demo.ipynb`` cell "Load CAD-Recode checkpoint":
-    ``CADRecode.from_pretrained(..., torch_dtype='auto',
-    attn_implementation='flash_attention_2' if cuda else None).eval().to(device)``.
+    Mirrors ``demo.ipynb`` cell "Load CAD-Recode checkpoint"
+    (``attn_implementation='flash_attention_2' if cuda else None``), but the
+    ``flash_attn`` package is an optional, slow-to-build dependency (see
+    ``envs/cadrecode.md``) that most nodes won't have installed. Fall back to
+    ``sdpa`` — same pattern as ``models/_cadrille_common.load_model`` — instead
+    of hard-failing with an ImportError.
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    attn_implementation = "flash_attention_2" if torch.cuda.is_available() else None
-    model = CADRecode.from_pretrained(
-        weights_id,
-        torch_dtype="auto",
-        attn_implementation=attn_implementation,
-    ).eval().to(device)
-    print(f"loaded {weights_id} on {device} with attn={attn_implementation}")
-    return model
+    attn_candidates = ("flash_attention_2", "sdpa") if device == "cuda" else (None,)
+    last_error: Exception | None = None
+    for attn_implementation in attn_candidates:
+        try:
+            model = CADRecode.from_pretrained(
+                weights_id,
+                torch_dtype="auto",
+                attn_implementation=attn_implementation,
+            ).eval().to(device)
+            print(f"loaded {weights_id} on {device} with attn={attn_implementation}")
+            return model
+        except (ImportError, ValueError) as e:
+            last_error = e
+            print(f"attn={attn_implementation} unavailable ({e}); falling back")
+    raise RuntimeError(f"could not load {weights_id}: {last_error}")
 
 
 def load_tokenizer() -> AutoTokenizer:
